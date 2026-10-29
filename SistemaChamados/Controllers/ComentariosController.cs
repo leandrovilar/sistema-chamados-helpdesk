@@ -8,13 +8,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Client;
 using SistemaChamados.Data;
 using SistemaChamados.Models;
-
+using Microsoft.AspNetCore.Authorization;
 
 namespace SistemaChamados.Controllers;
 
-
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class ComentariosController : ControllerBase
 {
     private readonly ChamadosContext _context;

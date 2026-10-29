@@ -8,7 +8,7 @@ namespace SistemaChamados.Models
     public enum Papel
     {
         Solicitante = 0,
-        Tecnico = 1,
-        Gestor = 2,
+        Atendente = 1,
+        Admin = 2,
     }
 }

@@ -10,11 +10,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Client;
 using SistemaChamados.Data;
 using SistemaChamados.Models;
+using Microsoft.AspNetCore.Authorization;
 
 namespace SistemaChamados.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class UsuariosController : ControllerBase
 {
     private readonly ChamadosContext _context;
@@ -26,6 +28,7 @@ public class UsuariosController : ControllerBase
 
     // GET: api/usuarios
     [HttpGet]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<IEnumerable<Usuario>>> GetUsuarios()
     {
         return await _context.Usuarios.ToListAsync();
@@ -47,8 +50,14 @@ public class UsuariosController : ControllerBase
 
     // POST: api/usuarios
     [HttpPost]
+    [Authorize(Roles = "Admin")]
     public async Task<ActionResult<Usuario>> PostUsuario(Usuario usuario)
     {
+        if (string.IsNullOrWhiteSpace(usuario.Senha))
+        {
+            return BadRequest("A senha é obrigatória.");
+        }
+
         _context.Usuarios.Add(usuario);
         await _context.SaveChangesAsync();
 
@@ -57,6 +66,7 @@ public class UsuariosController : ControllerBase
 
     // PUT: api/usuarios/5
     [HttpPut("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> PutUsuario(Guid id, Usuario usuario)
     {
         if (id != usuario.Id)
@@ -87,6 +97,7 @@ public class UsuariosController : ControllerBase
 
     // DELETE: api/usuarios/5
     [HttpDelete("{id}")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteUsuario(Guid id)
     {
         var usuario = await _context.Usuarios.FindAsync(id);

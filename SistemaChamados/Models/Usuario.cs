@@ -19,6 +19,10 @@ namespace SistemaChamados.Models
         [StringLength(150, ErrorMessage = "O e-mail deve ter no máximo 150 caracteres")]
         public string Email { get; set; } = string.Empty;
 
+        [Required(ErrorMessage = "A senha é obrigatória.")]
+        [StringLength(200)]
+        public string Senha { get; set; } = string.Empty;
+
         [Range(0, 2, ErrorMessage = "O papel deve ser o 0 (Solicitante), 1 (Atendente) ou 2 (Admin).")]
         public Papel Papel { get; set; }
         public bool Ativo { get; set; } = true;
