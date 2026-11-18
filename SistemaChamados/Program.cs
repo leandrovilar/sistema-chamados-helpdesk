@@ -5,12 +5,17 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi;
+using Microsoft.AspNetCore.Identity;
+using SistemaChamados.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Registrar DbContext do Entity Framework
 builder.Services.AddDbContext<ChamadosContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// AJUSTE: disponibiliza a ferramenta de hash de senhas para os controllers.
+builder.Services.AddScoped<IPasswordHasher<Usuario>, PasswordHasher<Usuario>>();
 
 // Adicionar controllers
 builder.Services.AddControllers()

@@ -1,148 +1,214 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Identity.Client;
 using SistemaChamados.Data;
+using SistemaChamados.DTOs;
 using SistemaChamados.Models;
-using Microsoft.AspNetCore.Authorization;
 
-namespace SistemaChamados.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-[Authorize]
-public class ComentariosController : ControllerBase
+namespace SistemaChamados.Controllers
 {
-    private readonly ChamadosContext _context;
-
-    public ComentariosController(ChamadosContext context)
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class ComentariosController : ControllerBase
     {
-        _context = context;
-    }
+        private readonly ChamadosContext _context;
 
-    //GET: api/comentarios
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Comentario>>> GetComentarios()
-    {
-        return await _context.Comentarios
-            .Include(c => c.Chamado)
-            .Include(c => c.Usuario)
-            .ToListAsync();
-    }
-
-
-    //GET: api/comentarios/5
-    [HttpGet("id")]
-    public async Task<ActionResult<Comentario>> GetComentario(Guid id)
-    {
-        var comentario = await _context.Comentarios
-        .Include(c => c.Chamado)
-        .Include(c => c.Usuario)
-        .FirstOrDefaultAsync(c => c.Id == id);
-
-        if (comentario == null)
+        public ComentariosController(ChamadosContext context)
         {
-            return NotFound();
-        }
-        return comentario;
-    }
-
-    // POST: api/comentarios
-    [HttpPost]
-    public async Task<ActionResult<Comentario>> PostComentario(Comentario comentario)
-    {
-        //Validação: verificar se o chamado existe
-        var chamado = await _context.Chamados.FindAsync(comentario.ChamadoId);
-        if (chamado == null)
-        {
-            return BadRequest("Chamado inválido");
+            _context = context;
         }
 
-        //Validação: verificar se o usuário existe e está ativo
-        var usuario = await _context.Usuarios.FindAsync(comentario.UsuarioId);
-        if (usuario == null || !usuario.Ativo)
+        private bool TentarObterUsuarioId(out Guid usuarioId)
         {
-            return BadRequest("Chamado inválido.");
+            var valor = User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? User.FindFirstValue("sub");
+
+            return Guid.TryParse(valor, out usuarioId);
         }
 
-        //Definir data do comentário automaticamente
-        comentario.DataComentario = DateTime.UtcNow;
-
-        _context.Comentarios.Add(comentario);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetComentario), new { id = comentario.Id }, comentario);
-    }
-    //PUT: api/comentarios/5
-    [HttpPut("{id}")]
-    public async Task<IActionResult> PutComentario(Guid id, Comentario comentario)
-    {
-        if (id != comentario.Id)
+        // GET: api/Comentarios
+        [HttpGet]
+        [Authorize(Roles = "Solicitante,Atendente,Admin")]
+        public async Task<IActionResult> GetComentarios()
         {
-            return BadRequest();
+            var comentarios = await _context.Comentarios
+                .Select(c => new ComentarioRespostaDto
+                {
+                    Id = c.Id,
+                    ChamadoId = c.ChamadoId,
+                    UsuarioId = c.UsuarioId,
+                    Conteudo = c.Conteudo,
+                    DataComentario = c.DataComentario,
+                    NomeUsuario = c.Usuario == null
+                        ? string.Empty
+                        : c.Usuario.Nome
+                })
+                .ToListAsync();
+
+            return Ok(comentarios);
         }
 
-        _context.Entry(comentario).State = EntityState.Modified;
+        // GET: api/Comentarios/{id}
+        [HttpGet("{id}")]
+        [Authorize(Roles = "Solicitante,Atendente,Admin")]
+        public async Task<IActionResult> GetComentario(Guid id)
+        {
+            var comentario = await _context.Comentarios
+                .Where(c => c.Id == id)
+                .Select(c => new ComentarioRespostaDto
+                {
+                    Id = c.Id,
+                    ChamadoId = c.ChamadoId,
+                    UsuarioId = c.UsuarioId,
+                    Conteudo = c.Conteudo,
+                    DataComentario = c.DataComentario,
+                    NomeUsuario = c.Usuario == null
+                        ? string.Empty
+                        : c.Usuario.Nome
+                })
+                .FirstOrDefaultAsync();
 
-        try
-        {
-            await _context.SaveChangesAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!_context.Comentarios.Any(e => e.Id == id))
+            if (comentario == null)
             {
                 return NotFound();
             }
-            else
+
+            return Ok(comentario);
+        }
+
+        // GET: api/Comentarios/chamados/{chamadoId}
+        [HttpGet("chamados/{chamadoId}")]
+        [Authorize(Roles = "Solicitante,Atendente,Admin")]
+        public async Task<IActionResult> GetComentariosPorChamado(
+            Guid chamadoId)
+        {
+            var comentarios = await _context.Comentarios
+                .Where(c => c.ChamadoId == chamadoId)
+                .OrderBy(c => c.DataComentario)
+                .Select(c => new ComentarioRespostaDto
+                {
+                    Id = c.Id,
+                    ChamadoId = c.ChamadoId,
+                    UsuarioId = c.UsuarioId,
+                    Conteudo = c.Conteudo,
+                    DataComentario = c.DataComentario,
+                    NomeUsuario = c.Usuario == null
+                        ? string.Empty
+                        : c.Usuario.Nome
+                })
+                .ToListAsync();
+
+            return Ok(comentarios);
+        }
+
+        // POST: api/Comentarios
+        [HttpPost]
+        [Authorize(Roles = "Solicitante,Atendente,Admin")]
+        public async Task<IActionResult> PostComentario(
+            [FromBody] CriarComentarioDto dto)
+        {
+            if (!TentarObterUsuarioId(out var usuarioId))
             {
-                throw;
+                return Unauthorized();
             }
 
+            var chamadoExiste = await _context.Chamados
+                .AnyAsync(c => c.Id == dto.ChamadoId);
+
+            if (!chamadoExiste)
+            {
+                return BadRequest("Chamado inválido.");
+            }
+
+            var comentario = new Comentario
+            {
+                ChamadoId = dto.ChamadoId,
+                UsuarioId = usuarioId,
+                Conteudo = dto.Conteudo,
+                DataComentario = DateTime.UtcNow
+            };
+
+            _context.Comentarios.Add(comentario);
+            await _context.SaveChangesAsync();
+
+            var resposta = await _context.Comentarios
+                .Where(c => c.Id == comentario.Id)
+                .Select(c => new ComentarioRespostaDto
+                {
+                    Id = c.Id,
+                    ChamadoId = c.ChamadoId,
+                    UsuarioId = c.UsuarioId,
+                    Conteudo = c.Conteudo,
+                    DataComentario = c.DataComentario,
+                    NomeUsuario = c.Usuario == null
+                        ? string.Empty
+                        : c.Usuario.Nome
+                })
+                .FirstAsync();
+
+            return CreatedAtAction(
+                nameof(GetComentario),
+                new { id = comentario.Id },
+                resposta);
         }
-        return NoContent();
-    }
 
-
-    // DELETE: api/comentarios/5
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteComentario(Guid id)
-    {
-        var comentario = await _context.Comentarios.FindAsync(id);
-        if (comentario == null)
+        // PUT: api/Comentarios/{id}
+        // Somente o autor ou Admin pode editar.
+        [HttpPut("{id}")]
+        [Authorize(Roles = "Solicitante,Atendente,Admin")]
+        public async Task<IActionResult> PutComentario(
+            Guid id,
+            [FromBody] AtualizarComentarioDto dto)
         {
-            return NotFound();
+            if (!TentarObterUsuarioId(out var usuarioId))
+            {
+                return Unauthorized();
+            }
+
+            var comentario = await _context.Comentarios.FindAsync(id);
+
+            if (comentario == null)
+            {
+                return NotFound();
+            }
+
+            var ehAutor = comentario.UsuarioId == usuarioId;
+            var ehAdmin = User.IsInRole("Admin");
+
+            if (!ehAutor && !ehAdmin)
+            {
+                return Forbid();
+            }
+
+            comentario.Conteudo = dto.Conteudo;
+
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
 
-        _context.Comentarios.Remove(comentario);
-        await _context.SaveChangesAsync();
+        // DELETE: api/Comentarios/{id}
+        // Somente Admin pode excluir.
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteComentario(Guid id)
+        {
+            var comentario = await _context.Comentarios.FindAsync(id);
 
-        return NoContent();
-    }
+            if (comentario == null)
+            {
+                return NotFound();
+            }
 
-    //GET: api/chamados/5/comentarios
-    // [HttpGet("chamados/chamadosId")]
-    // public async Task<ActionResult<IEnumerable<Comentario>>> GetComentariosPorChamado(Guid chamadoId)
-    // {
-    //     return await _context.Comentarios
-    //     .Include(c => c.Usuario)
-    //     .Where(c => c.ChamadoId == chamadoId)
-    //     .ToListAsync();
-    // }
+            _context.Comentarios.Remove(comentario);
+            await _context.SaveChangesAsync();
 
-    [HttpGet("chamados/{chamadoId}")]
-    public async Task<ActionResult<IEnumerable<Comentario>>> GetComentariosPorChamado(
-    [FromRoute] Guid chamadoId)
-    {
-        var comentarios = await _context.Comentarios
-            .Include(c => c.Usuario)
-            .Where(c => c.ChamadoId == chamadoId)
-            .ToListAsync();
-
-        return Ok(comentarios);
+            return NoContent();
+        }
     }
 }
